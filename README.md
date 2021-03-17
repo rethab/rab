@@ -24,3 +24,24 @@ Show Options:
 ```bash
 cargo run -- --help
 ```
+
+## Sample Output
+```bash
+> cargo run --quiet -- -c 100 -n 10000  "localhost:8080"
+Concurrency Level:	100
+Time taken for tests:	0.988 seconds
+Complete requests:	10000
+Failed requests:	0
+Non-2xx responses:	0
+
+Percentage of the requests served within a certain time (ms)
+50%	9
+66%	10
+75%	10
+80%	10
+90%	10
+95%	12
+98%	13
+99%	13
+100%	17 (longest request)
+```

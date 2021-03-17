@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
-use mio::{Events, Token};
 use mio::event::Event;
+use mio::{Events, Token};
 
-use crate::connection::{Connection, Ctx};
 use crate::connection::ConnectionState::{CONNECTED, CONNECTING, READ};
+use crate::connection::{Connection, Ctx};
+use crate::http;
 
 pub fn benchmark(
     timelimit: Duration,
@@ -16,7 +17,7 @@ pub fn benchmark(
     let start = Instant::now();
     let mut time_left = timelimit;
     let mut events = Events::with_capacity(128);
-    while ctx.successful_responses < ctx.max_requests {
+    while ctx.expect_more_responses() {
         ctx.poll(&mut events, Some(time_left))?;
 
         for event in events.iter() {
@@ -71,18 +72,25 @@ fn handle_connection_event(event: &Event, ctx: &mut Ctx, conn: &mut Connection) 
 
         if bytes_read != 0 {
             let received_data = &buf[..bytes_read];
-            if let Ok(str) = std::str::from_utf8(received_data) {
-                let head = &str[..40];
-                let tail = &str[str.len() - 10..];
-                println!("Data: {:?}..{:?}", head, tail);
-            } else {
-                eprintln!("Failed to decode received data");
+            if !conn.is_reading_response() {
+                // first bytes, check http response code
+                if let Ok(resp_code) = http::parse_response(received_data) {
+                    if (200..300).contains(&resp_code) {
+                        ctx.successful_response();
+                    } else {
+                        eprintln!("HTTP Response Code {}", resp_code);
+                        ctx.unsuccessful_response();
+                    }
+                } else {
+                    eprintln!("Failed to parse HTTP Header");
+                    ctx.failed_response();
+                }
             }
+            conn.bytes_read(bytes_read);
         }
 
         if done {
-            ctx.successful_responses += 1;
-            conn.bytes_received += bytes_read;
+            conn.finish_request();
             conn.reset(ctx)?;
         }
     }

@@ -9,23 +9,47 @@ use ConnectionState::{CONNECTED, CONNECTING, READ, UNCONNECTED};
 
 pub struct Ctx<'a> {
     pub successful_responses: usize,
+    pub unsuccessful_responses: usize,
+    pub failed_responses: usize,
+    pub sent_requests: usize,
+    pub payload: &'a [u8],
+    pub concurrency: usize,
+    max_requests: usize,
     poll: Poll,
     token: Token,
-    pub sent_requests: usize,
-    pub(crate) max_requests: usize,
-    pub payload: &'a [u8],
 }
 
 impl<'a> Ctx<'a> {
-    pub fn new(payload: &'a [u8], max_requests: usize) -> io::Result<Ctx<'a>> {
+    pub fn new(payload: &'a [u8], max_requests: usize, concurrency: usize) -> io::Result<Ctx<'a>> {
         Ok(Ctx {
             poll: Poll::new()?,
             token: Token(0),
             sent_requests: 0,
             successful_responses: 0,
+            unsuccessful_responses: 0,
+            failed_responses: 0,
             max_requests,
+            concurrency,
             payload,
         })
+    }
+
+    pub fn expect_more_responses(&self) -> bool {
+        let total_responses =
+            self.failed_responses + self.successful_responses + self.unsuccessful_responses;
+        total_responses < self.max_requests
+    }
+
+    pub fn successful_response(&mut self) {
+        self.successful_responses += 1;
+    }
+
+    pub fn unsuccessful_response(&mut self) {
+        self.unsuccessful_responses += 1;
+    }
+
+    pub fn failed_response(&mut self) {
+        self.failed_responses += 1;
     }
 
     pub fn poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
@@ -59,6 +83,7 @@ pub struct Connection {
     pub bytes_sent: usize,
     pub bytes_received: usize,
     pub sent_requests: usize,
+    reading_response: bool,
     request_started: Option<Instant>,
     pub times: Vec<Duration>,
 }
@@ -76,6 +101,7 @@ impl Connection {
             bytes_received: 0,
             sent_requests: 0,
             request_started: None,
+            reading_response: false,
             times: vec![],
         };
         ctx.register(&mut connection)?;
@@ -97,11 +123,20 @@ impl Connection {
         Ok(())
     }
 
+    pub fn finish_request(&mut self) {
+        self.reading_response = false;
+    }
+
+    pub fn bytes_read(&mut self, nbytes: usize) {
+        self.reading_response = true;
+        self.bytes_received += nbytes;
+    }
+
+    pub fn is_reading_response(&self) -> bool {
+        self.reading_response
+    }
+
     pub fn set_state(&mut self, new_state: ConnectionState) {
-        println!(
-            "Connection[{}] {:?} --> {:?}",
-            self.token.0, self.state, new_state
-        );
         self.state = new_state;
         self.measure_request();
     }

@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use structopt::StructOpt;
-use url::{Position, Url};
+use url::Url;
 
 use connection::{Connection, Ctx};
 
@@ -17,6 +17,7 @@ use crate::reporting::report;
 
 mod benchmarking;
 mod connection;
+mod http;
 mod reporting;
 
 #[derive(StructOpt, Debug)]
@@ -45,7 +46,9 @@ impl FromStr for LenientUrl {
         } else {
             s.to_owned()
         };
-        Url::parse(&url).map_err(|_| format!("invalid URL")).map(LenientUrl)
+        Url::parse(&url)
+            .map_err(|_| "invalid URL".to_string())
+            .map(LenientUrl)
     }
 }
 
@@ -64,10 +67,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
-    let req = create_request(&opt.url.0);
+    let req = http::create_request(&opt.url.0);
     let request = req.as_bytes();
 
-    let mut ctx = Ctx::new(request, opt.requests)?;
+    let mut ctx = Ctx::new(request, opt.requests, opt.concurrency)?;
 
     let mut connections = HashMap::new();
 
@@ -86,16 +89,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn create_socket_addr(url: &Url) -> io::Result<SocketAddr> {
-    url.socket_addrs(|| url.port_or_known_default()).map(|ss| ss[0])
-}
-
-fn create_request(url: &Url) -> String {
-    let host = url.host_str().expect("Missing host");
-    let path = &url[Position::BeforePath..];
-    format!(
-        "GET {} HTTP/1.0\r\nHost: {}\r\n{}\r\n\r\n",
-        path, host, "Accept: */*"
-    )
+    url.socket_addrs(|| url.port_or_known_default())
+        .map(|ss| ss[0])
 }
 
 #[cfg(test)]
@@ -107,18 +102,46 @@ mod test {
         let localhost_port: SocketAddr = "[::1]:8080".parse().unwrap();
         let localhost_http: SocketAddr = "[::1]:80".parse().unwrap();
         let localhost_https: SocketAddr = "[::1]:443".parse().unwrap();
-        assert_eq!(localhost_port, create_socket_addr(&parse_url("localhost:8080").0).unwrap());
-        assert_eq!(localhost_port, create_socket_addr(&parse_url("http://localhost:8080").0).unwrap());
-        assert_eq!(localhost_http, create_socket_addr(&parse_url("http://localhost").0).unwrap());
-        assert_eq!(localhost_http, create_socket_addr(&parse_url("http://localhost:80").0).unwrap());
-        assert_eq!(localhost_https, create_socket_addr(&parse_url("https://localhost").0).unwrap());
-        assert_eq!(localhost_https, create_socket_addr(&parse_url("https://localhost:443").0).unwrap());
+        assert_eq!(
+            localhost_port,
+            create_socket_addr(&parse_url("localhost:8080").0).unwrap()
+        );
+        assert_eq!(
+            localhost_port,
+            create_socket_addr(&parse_url("http://localhost:8080").0).unwrap()
+        );
+        assert_eq!(
+            localhost_http,
+            create_socket_addr(&parse_url("http://localhost").0).unwrap()
+        );
+        assert_eq!(
+            localhost_http,
+            create_socket_addr(&parse_url("http://localhost:80").0).unwrap()
+        );
+        assert_eq!(
+            localhost_https,
+            create_socket_addr(&parse_url("https://localhost").0).unwrap()
+        );
+        assert_eq!(
+            localhost_https,
+            create_socket_addr(&parse_url("https://localhost:443").0).unwrap()
+        );
     }
 
     #[test]
     fn test_lenient_url_from_str() {
-        assert_eq!("http", LenientUrl::from_str("localhost").unwrap().0.scheme());
-        assert_eq!("localhost", LenientUrl::from_str("localhost").unwrap().0.host_str().unwrap());
+        assert_eq!(
+            "http",
+            LenientUrl::from_str("localhost").unwrap().0.scheme()
+        );
+        assert_eq!(
+            "localhost",
+            LenientUrl::from_str("localhost")
+                .unwrap()
+                .0
+                .host_str()
+                .unwrap()
+        );
     }
 
     fn parse_url(url: &str) -> LenientUrl {

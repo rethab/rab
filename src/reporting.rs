@@ -6,16 +6,20 @@ use mio::Token;
 use crate::connection::{Connection, Ctx};
 
 pub fn report(time_spent: Duration, ctx: &Ctx, connections: HashMap<Token, Connection>) {
+    println!("Concurrency Level:\t{}", ctx.concurrency);
     println!(
-        "Took {}s {}ms",
+        "Time taken for tests:\t{}.{:03} seconds",
         time_spent.as_secs(),
         time_spent.as_millis() % 1000
     );
     println!(
-        "Sent {} requests over {} connections",
-        ctx.sent_requests,
-        connections.len()
+        "Complete requests:\t{}",
+        ctx.unsuccessful_responses + ctx.successful_responses
     );
+    println!("Failed requests:\t{}", ctx.failed_responses);
+    println!("Non-2xx responses:\t{}", ctx.unsuccessful_responses);
+
+    println!();
 
     let mut all_times: Vec<Duration> = connections
         .iter()
