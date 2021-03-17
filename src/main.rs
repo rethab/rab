@@ -104,9 +104,9 @@ mod test {
 
     #[test]
     fn test_create_socket_addr() {
-        let localhost_port: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-        let localhost_http: SocketAddr = "127.0.0.1:80".parse().unwrap();
-        let localhost_https: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let localhost_port: SocketAddr = "[::1]:8080".parse().unwrap();
+        let localhost_http: SocketAddr = "[::1]:80".parse().unwrap();
+        let localhost_https: SocketAddr = "[::1]:443".parse().unwrap();
         assert_eq!(localhost_port, create_socket_addr(&parse_url("localhost:8080").0).unwrap());
         assert_eq!(localhost_port, create_socket_addr(&parse_url("http://localhost:8080").0).unwrap());
         assert_eq!(localhost_http, create_socket_addr(&parse_url("http://localhost").0).unwrap());
