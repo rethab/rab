@@ -1,3 +1,6 @@
+![main](https://github.com/rethab/rab/actions/workflows/rust.yml/badge.svg)
+
+
 # RAB - Rust Apache Bench
 
 The goal of this program is to become a drop-in replacement for [apache bench (ab)](https://en.wikipedia.org/wiki/ApacheBench).
