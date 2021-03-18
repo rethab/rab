@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     benchmark(timelimit, &mut ctx, &mut connections)?;
     let time_spent = Instant::now() - start;
 
-    report(time_spent, &ctx, connections);
+    report(time_spent, &opt.url.0, &ctx, connections);
 
     Ok(())
 }
