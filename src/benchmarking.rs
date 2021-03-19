@@ -1,23 +1,30 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind, Read, Write};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use mio::event::Event;
+use mio::net::TcpStream;
 use mio::{Events, Token};
 
 use crate::connection::ConnectionState::{CONNECTED, CONNECTING, READ};
 use crate::connection::{Connection, Ctx};
 use crate::http::Response;
-use mio::net::TcpStream;
+use crate::reporting::Reporter;
 
 pub fn benchmark(
     timelimit: Duration,
     ctx: &mut Ctx,
     connections: &mut HashMap<Token, Connection>,
+    reporter: Rc<RefCell<Reporter>>,
 ) -> io::Result<()> {
     let start = Instant::now();
     let mut time_left = timelimit;
     let mut events = Events::with_capacity(128);
+
+    reporter.borrow_mut().start();
+
     while ctx.expect_more_responses() {
         ctx.poll(&mut events, Some(time_left))?;
 
@@ -37,6 +44,9 @@ pub fn benchmark(
             time_left = timelimit - elapsed;
         }
     }
+
+    reporter.borrow_mut().end();
+
     Ok(())
 }
 

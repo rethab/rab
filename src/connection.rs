@@ -1,11 +1,15 @@
+use std::cell::RefCell;
 use std::io;
 use std::net::{Shutdown, SocketAddr};
-use std::time::{Duration, Instant};
+use std::rc::Rc;
+use std::time::Duration;
 
 use mio::net::TcpStream;
 use mio::{Events, Interest, Poll, Token};
 
-use ConnectionState::{CONNECTED, CONNECTING, READ, UNCONNECTED};
+use ConnectionState::{CONNECTING, UNCONNECTED};
+
+use crate::reporting::Reporter;
 
 pub struct Ctx<'a> {
     pub successful_responses: usize,
@@ -86,12 +90,15 @@ pub struct Connection {
     pub bytes_received: usize,
     pub sent_requests: usize,
     reading_response: bool,
-    request_started: Option<Instant>,
-    pub times: Vec<Duration>,
+    reporter: Rc<RefCell<Reporter>>,
 }
 
 impl Connection {
-    pub fn new(addr: SocketAddr, ctx: &mut Ctx) -> io::Result<Connection> {
+    pub fn new(
+        addr: SocketAddr,
+        ctx: &mut Ctx,
+        reporter: Rc<RefCell<Reporter>>,
+    ) -> io::Result<Connection> {
         let client = TcpStream::connect(addr)?;
         let token = ctx.next_token();
         let mut connection = Connection {
@@ -102,9 +109,8 @@ impl Connection {
             bytes_sent: 0,
             bytes_received: 0,
             sent_requests: 0,
-            request_started: None,
             reading_response: false,
-            times: vec![],
+            reporter,
         };
         ctx.register(&mut connection)?;
         connection.set_state(CONNECTING);
@@ -140,23 +146,9 @@ impl Connection {
 
     pub fn set_state(&mut self, new_state: ConnectionState) {
         self.state = new_state;
-        self.measure_request();
-    }
-
-    fn measure_request(&mut self) {
-        match self.state {
-            READ => self.request_started = Some(Instant::now()),
-            UNCONNECTED => {
-                let start = self
-                    .request_started
-                    .take()
-                    .expect("should have request_started field");
-                let elapsed = Instant::now() - start;
-                self.times.push(elapsed);
-            }
-            CONNECTING => {}
-            CONNECTED => {}
-        }
+        self.reporter
+            .borrow_mut()
+            .connection_state_changed(&self.token, &self.state);
     }
 }
 

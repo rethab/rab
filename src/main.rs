@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io;
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use structopt::StructOpt;
 use url::Url;
@@ -13,7 +14,8 @@ use url::Url;
 use connection::{Connection, Ctx};
 
 use crate::benchmarking::benchmark;
-use crate::reporting::report;
+use crate::reporting::Reporter;
+use std::cell::RefCell;
 
 mod benchmarking;
 mod connection;
@@ -70,20 +72,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let req = http::create_request(&opt.url.0);
     let request = req.as_bytes();
 
+    let reporter = Rc::new(RefCell::new(Reporter::new()));
     let mut ctx = Ctx::new(request, opt.requests, opt.concurrency)?;
 
     let mut connections = HashMap::new();
 
     for _ in 0..opt.concurrency {
-        let connection = Connection::new(addr, &mut ctx)?;
+        let connection = Connection::new(addr, &mut ctx, reporter.clone())?;
         connections.insert(connection.token, connection);
     }
 
-    let start = Instant::now();
-    benchmark(timelimit, &mut ctx, &mut connections)?;
-    let time_spent = Instant::now() - start;
+    benchmark(timelimit, &mut ctx, &mut connections, reporter.clone())?;
 
-    report(time_spent, &opt.url.0, &ctx, connections);
+    reporter.borrow().print(&opt.url.0, &ctx);
 
     Ok(())
 }
