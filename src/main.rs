@@ -30,6 +30,9 @@ struct Opts {
     #[structopt(short = "n", long, default_value = "1")]
     requests: usize,
 
+    #[structopt(short = "i")]
+    use_head: bool,
+
     #[structopt(short, long)]
     timelimit: Option<u64>,
 
@@ -69,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
-    let req = http::create_request(&opt.url.0);
+    let req = http::create_request(&opt.url.0, opt.use_head);
     let request = req.as_bytes();
 
     let reporter = Rc::new(RefCell::new(Reporter::new()));

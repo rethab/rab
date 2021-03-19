@@ -38,12 +38,13 @@ fn parse_server(resp: &[u8]) -> Option<String> {
         })
 }
 
-pub fn create_request(url: &Url) -> String {
+pub fn create_request(url: &Url, use_head: bool) -> String {
     let host = url.host_str().expect("Missing host");
     let path = &url[Position::BeforePath..];
+    let method = if use_head { "HEAD" } else { "GET" };
     format!(
-        "GET {} HTTP/1.0\r\nHost: {}\r\n{}\r\n\r\n",
-        path, host, "Accept: */*"
+        "{} {} HTTP/1.0\r\nHost: {}\r\n{}\r\n\r\n",
+        method, path, host, "Accept: */*"
     )
 }
 
