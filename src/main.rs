@@ -1,5 +1,6 @@
 extern crate structopt;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io;
@@ -15,7 +16,6 @@ use connection::{Connection, Ctx};
 
 use crate::benchmarking::benchmark;
 use crate::reporting::Reporter;
-use std::cell::RefCell;
 
 mod benchmarking;
 mod connection;
@@ -23,20 +23,42 @@ mod http;
 mod reporting;
 
 #[derive(StructOpt, Debug)]
+#[structopt(name = "rab", about = "A drop-in replacement ApacheBench")]
 struct Opts {
-    #[structopt(short, long, default_value = "1")]
+    #[structopt(
+        short,
+        long,
+        default_value = "1",
+        help = "Number of multiple requests to make at a time"
+    )]
     concurrency: usize,
 
-    #[structopt(short = "n", long, default_value = "1")]
+    #[structopt(
+        short = "n",
+        long,
+        default_value = "1",
+        help = "Number of requests to perform"
+    )]
     requests: usize,
 
-    #[structopt(short = "i")]
+    #[structopt(short = "i", help = "Use HEAD instead of GET")]
     use_head: bool,
 
-    #[structopt(short, long)]
+    #[structopt(
+        short,
+        long,
+        help = "Seconds to max. to spend on benchmarking\nThis implies -n 50000"
+    )]
     timelimit: Option<u64>,
 
+    #[structopt(help = "[http[s]://]hostname[:port]/path")]
     url: LenientUrl,
+
+    #[structopt(
+        short = "q",
+        help = "Do not show progress when doing more than 150 requests"
+    )]
+    quiet: bool,
 }
 
 #[derive(Debug)]
@@ -75,7 +97,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let req = http::create_request(&opt.url.0, opt.use_head);
     let request = req.as_bytes();
 
-    let reporter = Rc::new(RefCell::new(Reporter::new()));
+    let heartbeatres = if opt.quiet || opt.requests <= 150 {
+        0
+    } else {
+        100.max(opt.requests / 10)
+    };
+    let reporter = Rc::new(RefCell::new(Reporter::new(heartbeatres)));
     let mut ctx = Ctx::new(request, opt.requests, opt.concurrency)?;
 
     let mut connections = HashMap::new();
@@ -85,7 +112,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         connections.insert(connection.token, connection);
     }
 
+    println!(
+        "Benchmarking {} (be patient)",
+        opt.url.0.host_str().unwrap()
+    );
+    println!();
+
     benchmark(timelimit, &mut ctx, &mut connections, reporter.clone())?;
+
+    if heartbeatres > 0 {
+        println!("Finished {} requests", ctx.total_responses());
+        println!();
+    }
 
     reporter.borrow().print(&opt.url.0, &ctx);
 

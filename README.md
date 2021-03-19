@@ -28,11 +28,22 @@ cargo run -- --help
 ## Sample Output
 ```bash
 > cargo run --quiet -- -c 100 -n 10000  "localhost:8080"
+Benchmarking localhost (be patient)
+
+Server Software:	nginx
+Server Hostname:	localhost
+Server Port:		8080
+
 Concurrency Level:	100
 Time taken for tests:	0.988 seconds
 Complete requests:	10000
 Failed requests:	0
 Non-2xx responses:	0
+
+Connection Times (ms)
+		min  mean[+/-sd] median   max
+Connect:	  7   57  59.5   15       139
+
 
 Percentage of the requests served within a certain time (ms)
 50%	9

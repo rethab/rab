@@ -40,10 +40,12 @@ impl<'a> Ctx<'a> {
         })
     }
 
+    pub fn total_responses(&self) -> usize {
+        self.failed_responses + self.successful_responses + self.unsuccessful_responses
+    }
+
     pub fn expect_more_responses(&self) -> bool {
-        let total_responses =
-            self.failed_responses + self.successful_responses + self.unsuccessful_responses;
-        total_responses < self.max_requests
+        self.total_responses() < self.max_requests
     }
 
     pub fn successful_response(&mut self) {
