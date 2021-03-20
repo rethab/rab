@@ -7,7 +7,7 @@ use url::Url;
 use crate::connection::{ConnectionState, Ctx};
 
 pub struct Reporter {
-    heartbeatres: usize,
+    heartbeatres: Option<usize>,
     done: usize,
     connections: HashMap<Token, ConnectionStats>,
     started: Option<Instant>,
@@ -29,7 +29,7 @@ enum State {
 }
 
 impl Reporter {
-    pub fn new(heartbeatres: usize) -> Self {
+    pub fn new(heartbeatres: Option<usize>) -> Self {
         Reporter {
             heartbeatres,
             done: 0,
@@ -77,8 +77,10 @@ impl Reporter {
     }
 
     fn print_heartbeat(&self) {
-        if self.heartbeatres > 0 && self.done % self.heartbeatres == 0 {
-            println!("Completed {} requests", self.done);
+        if let Some(heartbeatres) = self.heartbeatres {
+            if self.done % heartbeatres == 0 {
+                println!("Completed {} requests", self.done);
+            }
         }
     }
 
