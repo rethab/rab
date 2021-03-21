@@ -12,13 +12,15 @@ use std::time::Duration;
 use structopt::StructOpt;
 use url::Url;
 
-use connection::{Connection, Ctx};
+use connection::Connection;
 
 use crate::benchmarking::benchmark;
+use crate::ctx::Ctx;
 use crate::reporting::Reporter;
 
 mod benchmarking;
 mod connection;
+mod ctx;
 mod http;
 mod reporting;
 

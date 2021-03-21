@@ -1,96 +1,26 @@
 use std::cell::RefCell;
 use std::io;
+use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::rc::Rc;
-use std::time::Duration;
 
 use mio::net::TcpStream;
-use mio::{Events, Interest, Poll, Token};
+use mio::Token;
 
 use ConnectionState::{CONNECTING, UNCONNECTED};
 
+use crate::connection::ConnectionState::READ;
+use crate::ctx::Ctx;
 use crate::reporting::Reporter;
-
-pub struct Ctx<'a> {
-    pub successful_responses: usize,
-    pub unsuccessful_responses: usize,
-    pub failed_responses: usize,
-    pub sent_requests: usize,
-    pub payload: &'a [u8],
-    pub concurrency: usize,
-    pub server_name: Option<String>,
-    max_requests: usize,
-    poll: Poll,
-    token: Token,
-}
-
-impl<'a> Ctx<'a> {
-    pub fn new(payload: &'a [u8], max_requests: usize, concurrency: usize) -> io::Result<Ctx<'a>> {
-        Ok(Ctx {
-            poll: Poll::new()?,
-            token: Token(0),
-            sent_requests: 0,
-            successful_responses: 0,
-            unsuccessful_responses: 0,
-            failed_responses: 0,
-            server_name: None,
-            max_requests,
-            concurrency,
-            payload,
-        })
-    }
-
-    pub fn total_responses(&self) -> usize {
-        self.failed_responses + self.successful_responses + self.unsuccessful_responses
-    }
-
-    pub fn expect_more_responses(&self) -> bool {
-        self.total_responses() < self.max_requests
-    }
-
-    pub fn successful_response(&mut self) {
-        self.successful_responses += 1;
-    }
-
-    pub fn unsuccessful_response(&mut self) {
-        self.unsuccessful_responses += 1;
-    }
-
-    pub fn failed_response(&mut self) {
-        self.failed_responses += 1;
-    }
-
-    pub fn poll(&mut self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
-        self.poll.poll(events, timeout)
-    }
-
-    fn register(&mut self, conn: &mut Connection) -> io::Result<()> {
-        self.poll.registry().register(
-            &mut conn.stream,
-            conn.token,
-            Interest::READABLE | Interest::WRITABLE,
-        )
-    }
-
-    fn next_token(&mut self) -> Token {
-        let next = self.token.0;
-        self.token.0 += 1;
-        Token(next)
-    }
-
-    pub fn send_more(&self) -> bool {
-        self.max_requests > self.sent_requests
-    }
-}
 
 pub struct Connection {
     pub token: Token,
     addr: SocketAddr,
-    pub stream: TcpStream,
+    stream: TcpStream,
     pub state: ConnectionState,
-    pub bytes_sent: usize,
-    pub bytes_received: usize,
-    pub sent_requests: usize,
+    bytes_sent: usize,
+    bytes_received: usize,
+    sent_requests: usize,
     reading_response: bool,
     reporter: Rc<RefCell<Reporter>>,
 }
@@ -114,7 +44,7 @@ impl Connection {
             reading_response: false,
             reporter,
         };
-        ctx.register(&mut connection)?;
+        ctx.register(token, &mut connection.stream)?;
         connection.set_state(CONNECTING);
         Ok(connection)
     }
@@ -123,11 +53,11 @@ impl Connection {
         self.disconnect(ctx)?;
         self.stream = TcpStream::connect(self.addr)?;
         self.set_state(CONNECTING);
-        ctx.register(self)
+        ctx.register(self.token, &mut self.stream)
     }
 
     fn disconnect(&mut self, ctx: &Ctx) -> io::Result<()> {
-        ctx.poll.registry().deregister(&mut self.stream)?;
+        ctx.deregister(&mut self.stream)?;
         self.stream.shutdown(Shutdown::Both)?;
         self.set_state(UNCONNECTED);
         Ok(())
@@ -151,6 +81,35 @@ impl Connection {
         self.reporter
             .borrow_mut()
             .connection_state_changed(&self.token, &self.state);
+    }
+
+    pub fn read_all(&mut self, buf: &mut Vec<u8>) -> (bool, usize) {
+        let mut bytes_read = 0;
+        loop {
+            match self.stream.read(&mut buf[bytes_read..]) {
+                Ok(0) => {
+                    return (true, bytes_read);
+                }
+                Ok(n) => {
+                    bytes_read += n;
+                    if bytes_read == buf.len() {
+                        buf.resize(buf.len() + 1024, 0);
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => return (false, bytes_read),
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => return (false, bytes_read),
+            };
+        }
+    }
+
+    pub fn send_request(&mut self, ctx: &mut Ctx) -> io::Result<()> {
+        self.stream.write_all(ctx.payload)?;
+        ctx.sent_requests += 1;
+        self.sent_requests += 1;
+        self.bytes_sent += ctx.payload.len();
+        self.set_state(READ);
+        Ok(())
     }
 }
 

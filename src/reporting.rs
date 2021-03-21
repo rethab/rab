@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use mio::Token;
 use url::Url;
 
-use crate::connection::{ConnectionState, Ctx};
+use crate::connection::ConnectionState;
+use crate::ctx::Ctx;
 
 pub struct Reporter {
     heartbeatres: Option<usize>,
@@ -107,6 +108,12 @@ impl Reporter {
         );
         println!("Server Hostname:\t{}", url.host_str().unwrap());
         println!("Server Port:\t\t{}", url.port_or_known_default().unwrap());
+        println!();
+
+        println!("Document Path:\t{}", url.path());
+        if let Some(doclen) = ctx.doclen {
+            println!("Document Length:\t{} bytes", doclen);
+        }
         println!();
 
         println!("Concurrency Level:\t{}", ctx.concurrency);
