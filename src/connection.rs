@@ -1,41 +1,47 @@
 use std::cell::RefCell;
 use std::io;
 use std::io::{ErrorKind, Read, Write};
-use std::net::{Shutdown, SocketAddr};
 use std::rc::Rc;
 
-use mio::net::TcpStream;
 use mio::Token;
 
 use ConnectionState::{CONNECTING, UNCONNECTED};
 
-use crate::connection::ConnectionState::READ;
-use crate::ctx::Ctx;
-use crate::reporting::Reporter;
+use super::connection::ConnectionState::READ;
+use super::ctx::Ctx;
+use super::reporting::Reporter;
+use mio::event::Source;
+use std::mem;
+use std::net::SocketAddr;
 
-pub struct Connection {
+pub struct Connection<S> {
     pub token: Token,
     addr: SocketAddr,
-    stream: TcpStream,
+    stream: S,
+    factory: Box<dyn Fn(SocketAddr) -> io::Result<S>>,
     pub state: ConnectionState,
     bytes_sent: usize,
-    bytes_received: usize,
+    pub bytes_received: usize,
     sent_requests: usize,
     reading_response: bool,
     reporter: Rc<RefCell<Reporter>>,
 }
 
-impl Connection {
+impl<S> Connection<S>
+where
+    S: Read + Write + Source,
+{
     pub fn new(
-        addr: SocketAddr,
         ctx: &mut Ctx,
+        addr: SocketAddr,
+        factory: Box<dyn Fn(SocketAddr) -> io::Result<S>>,
         reporter: Rc<RefCell<Reporter>>,
-    ) -> io::Result<Connection> {
-        let client = TcpStream::connect(addr)?;
+    ) -> io::Result<Connection<S>> {
         let token = ctx.next_token();
         let mut connection = Connection {
             addr,
-            stream: client,
+            stream: factory(addr)?,
+            factory,
             state: UNCONNECTED,
             token,
             bytes_sent: 0,
@@ -50,39 +56,16 @@ impl Connection {
     }
 
     pub fn reset(&mut self, ctx: &mut Ctx) -> io::Result<()> {
-        self.disconnect(ctx)?;
-        self.stream = TcpStream::connect(self.addr)?;
+        ctx.deregister(&mut self.stream)?;
+        let _ = mem::replace(&mut self.stream, (self.factory)(self.addr)?);
+        // prev stream should be dropped here
+        self.set_state(UNCONNECTED);
         self.set_state(CONNECTING);
         ctx.register(self.token, &mut self.stream)
     }
+}
 
-    fn disconnect(&mut self, ctx: &Ctx) -> io::Result<()> {
-        ctx.deregister(&mut self.stream)?;
-        self.stream.shutdown(Shutdown::Both)?;
-        self.set_state(UNCONNECTED);
-        Ok(())
-    }
-
-    pub fn finish_request(&mut self) {
-        self.reading_response = false;
-    }
-
-    pub fn bytes_read(&mut self, nbytes: usize) {
-        self.reading_response = true;
-        self.bytes_received += nbytes;
-    }
-
-    pub fn is_reading_response(&self) -> bool {
-        self.reading_response
-    }
-
-    pub fn set_state(&mut self, new_state: ConnectionState) {
-        self.state = new_state;
-        self.reporter
-            .borrow_mut()
-            .connection_state_changed(&self.token, &self.state);
-    }
-
+impl<S: Read> Connection<S> {
     pub fn read_all(&mut self, buf: &mut Vec<u8>) -> (bool, usize) {
         let mut bytes_read = 0;
         loop {
@@ -102,7 +85,34 @@ impl Connection {
             };
         }
     }
+}
 
+impl<S> Connection<S> {
+    pub fn finish_request(&mut self) {
+        self.reading_response = false;
+    }
+
+    pub fn bytes_read(&mut self, nbytes: usize) {
+        self.reading_response = true;
+        self.bytes_received += nbytes;
+    }
+
+    pub fn is_reading_response(&self) -> bool {
+        self.reading_response
+    }
+
+    pub fn set_state(&mut self, new_state: ConnectionState) {
+        self.state = new_state;
+        self.reporter
+            .borrow_mut()
+            .connection_state_changed(&self.token, &self.state);
+    }
+}
+
+impl<S> Connection<S>
+where
+    S: Write,
+{
     pub fn send_request(&mut self, ctx: &mut Ctx) -> io::Result<()> {
         self.stream.write_all(ctx.payload)?;
         ctx.sent_requests += 1;

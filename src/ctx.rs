@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Duration;
 
-use mio::net::TcpStream;
+use mio::event::Source;
 use mio::{Events, Interest, Poll, Token};
 
 pub struct Ctx<'a> {
@@ -59,14 +59,14 @@ impl<'a> Ctx<'a> {
         self.poll.poll(events, timeout)
     }
 
-    pub fn register(&mut self, token: Token, stream: &mut TcpStream) -> io::Result<()> {
+    pub fn register<S: Source>(&mut self, token: Token, source: &mut S) -> io::Result<()> {
         self.poll
             .registry()
-            .register(stream, token, Interest::READABLE | Interest::WRITABLE)
+            .register(source, token, Interest::READABLE | Interest::WRITABLE)
     }
 
-    pub fn deregister(&self, stream: &mut TcpStream) -> io::Result<()> {
-        self.poll.registry().deregister(stream)
+    pub fn deregister<S: Source>(&self, source: &mut S) -> io::Result<()> {
+        self.poll.registry().deregister(source)
     }
 
     pub fn next_token(&mut self) -> Token {
