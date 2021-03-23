@@ -114,7 +114,7 @@ where
     S: Write,
 {
     pub fn send_request(&mut self, ctx: &mut Ctx) -> io::Result<()> {
-        self.stream.write_all(ctx.payload)?;
+        self.stream.write_all(&ctx.payload)?;
         ctx.sent_requests += 1;
         self.sent_requests += 1;
         self.bytes_sent += ctx.payload.len();

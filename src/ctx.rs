@@ -4,12 +4,12 @@ use std::time::Duration;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token};
 
-pub struct Ctx<'a> {
+pub struct Ctx {
     pub successful_responses: usize,
     pub unsuccessful_responses: usize,
     pub failed_responses: usize,
     pub sent_requests: usize,
-    pub payload: &'a [u8],
+    pub payload: Vec<u8>,
     pub concurrency: usize,
     pub server_name: Option<String>,
     pub doclen: Option<usize>,
@@ -18,8 +18,8 @@ pub struct Ctx<'a> {
     token: Token,
 }
 
-impl<'a> Ctx<'a> {
-    pub fn new(payload: &'a [u8], max_requests: usize, concurrency: usize) -> io::Result<Ctx<'a>> {
+impl Ctx {
+    pub fn new(payload: Vec<u8>, max_requests: usize, concurrency: usize) -> io::Result<Ctx> {
         Ok(Ctx {
             poll: Poll::new()?,
             token: Token(0),

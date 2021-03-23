@@ -93,7 +93,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
     let req = http::create_request(&opt.url.0, opt.use_head);
-    let request = req.as_bytes();
 
     let heartbeatres = if opt.quiet || opt.requests <= 150 {
         None
@@ -101,7 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(100.max(opt.requests / 10))
     };
     let reporter = Rc::new(RefCell::new(Reporter::new(heartbeatres)));
-    let mut ctx = Ctx::new(request, opt.requests, opt.concurrency)?;
+    let mut ctx = Ctx::new(req.into_bytes(), opt.requests, opt.concurrency)?;
 
     let mut connections = HashMap::new();
 

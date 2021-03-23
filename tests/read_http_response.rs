@@ -4,11 +4,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::rc::Rc;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender};
 use std::time::Duration;
 
-use hyper::{Body, Response, Server};
 use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Response, Server};
 use mio::net::TcpStream;
 use tokio::task;
 use tokio::task::JoinHandle;
@@ -23,51 +23,79 @@ use rab::reporting::Reporter;
 #[tokio::test(flavor = "multi_thread")]
 async fn should_count_body_length() {
     let url = Url::parse("http://localhost:3000").expect("Invalid url");
-    let server = create_server(&url, "hello, world");
-    let conn = bench_connection(&url);
+    let (server, tx_done) = create_server(&url, || Response::new(Body::from("hello, world")));
+    let conn = (*bench_connection(&url)).1;
+    tx_done.send(1).expect("Failed to signal done");
     assert_eq!(12, conn.bytes_received);
     let _ = server.await;
 }
 
-fn bench_connection(url: &Url) -> Connection<TcpStream> {
+#[tokio::test(flavor = "multi_thread")]
+async fn should_read_server_name() {
+    let url = Url::parse("http://localhost:3000").expect("Invalid url");
+    let (server, tx_done) = create_server(&url, || {
+        Response::builder()
+            .header("Server", "mysrv")
+            .body(Body::from("foo"))
+            .unwrap()
+    });
+    let ctx = (*bench_connection(&url)).0;
+    tx_done.send(1).expect("Failed to signal done");
+    assert_eq!(Some("mysrv".into()), ctx.server_name);
+    let _ = server.await;
+}
+
+fn bench_connection(url: &Url) -> Box<(Ctx, Connection<TcpStream>)> {
     let reporter = Rc::new(RefCell::new(Reporter::new(None)));
     let request = create_request(&url, false);
-    let mut ctx = Ctx::new(request.as_bytes(), 1, 1).unwrap();
+    let mut ctx = Ctx::new(request.into_bytes(), 1, 1).unwrap();
     let conn = Connection::new(
         &mut ctx,
         url.socket_addrs(|| None).unwrap()[0],
         Box::new(TcpStream::connect),
         reporter.clone(),
-    ).expect("Failed to create connection");
+    )
+    .expect("Failed to create connection");
     let token = conn.token;
     let mut connections = HashMap::new();
     connections.insert(conn.token, conn);
 
-    benchmark(Duration::from_secs(5), &mut ctx, &mut connections, reporter).expect("Failed benchmark");
+    benchmark(Duration::from_secs(5), &mut ctx, &mut connections, reporter)
+        .expect("Failed benchmark");
 
-    connections.remove(&token).unwrap()
+    Box::new((ctx, connections.remove(&token).unwrap()))
 }
 
-fn create_server(url: &Url, response: &'static str) -> JoinHandle<()> {
-    let (tx, rx) = channel();
+fn create_server<R: 'static>(url: &Url, resp: R) -> (JoinHandle<()>, Sender<u8>)
+where
+    R: Fn() -> Response<Body> + Send + Clone + Copy,
+{
+    let (tx_started, rx_started) = channel();
+    let (tx_done, rx_done) = channel::<u8>();
     let addr = url.socket_addrs(|| None).unwrap()[0];
     let handle = task::spawn(async move {
-        let make_svc = make_service_fn(|_conn| async move {
-            Ok::<_, Infallible>(service_fn(move |_| async move {
-                Ok::<_, Infallible>(Response::new(Body::from(response)))
-            }))
+        let make_svc = make_service_fn(move |_conn| async move {
+            Ok::<_, Infallible>(service_fn(
+                move |_| async move { Ok::<_, Infallible>(resp()) },
+            ))
         });
 
         let s = Server::bind(&addr).serve(make_svc);
-        if let Err(e) = tx.send(()) {
+        if let Err(e) = tx_started.send(()) {
             eprintln!("Failed to signal server start: {}", e);
         }
-        if let Err(e) = s.await {
-            eprintln!("Failed to start server: {}", e);
+        let graceful = s.with_graceful_shutdown(async {
+            rx_done
+                .recv_timeout(Duration::from_secs(2))
+                .expect("Failed to run test fasth enough");
+        });
+        if let Err(e) = graceful.await {
+            eprintln!("server error: {}", e);
         }
     });
 
-    rx.recv_timeout(Duration::from_secs(2)).expect("Failed to start server fast enough");
-    handle
+    rx_started
+        .recv_timeout(Duration::from_secs(2))
+        .expect("Failed to start server fast enough");
+    (handle, tx_done)
 }
-
