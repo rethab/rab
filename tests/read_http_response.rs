@@ -1,15 +1,18 @@
 extern crate rab;
+extern crate serial_test;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::rc::Rc;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use mio::net::TcpStream;
+use serial_test::serial;
+use tokio::sync::oneshot;
 use tokio::task;
 use tokio::task::JoinHandle;
 use url::Url;
@@ -21,6 +24,7 @@ use rab::http::create_request;
 use rab::reporting::Reporter;
 
 #[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn should_count_body_length() {
     let url = Url::parse("http://localhost:3000").expect("Invalid url");
     let (server, tx_done) = create_server(&url, || Response::new(Body::from("hello, world")));
@@ -31,6 +35,7 @@ async fn should_count_body_length() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn should_read_server_name() {
     let url = Url::parse("http://localhost:3000").expect("Invalid url");
     let (server, tx_done) = create_server(&url, || {
@@ -66,12 +71,12 @@ fn bench_connection(url: &Url) -> Box<(Ctx, Connection<TcpStream>)> {
     Box::new((ctx, connections.remove(&token).unwrap()))
 }
 
-fn create_server<R: 'static>(url: &Url, resp: R) -> (JoinHandle<()>, Sender<u8>)
+fn create_server<R: 'static>(url: &Url, resp: R) -> (JoinHandle<()>, oneshot::Sender<u8>)
 where
     R: Fn() -> Response<Body> + Send + Clone + Copy,
 {
     let (tx_started, rx_started) = channel();
-    let (tx_done, rx_done) = channel::<u8>();
+    let (tx_done, rx_done) = oneshot::channel::<u8>();
     let addr = url.socket_addrs(|| None).unwrap()[0];
     let handle = task::spawn(async move {
         let make_svc = make_service_fn(move |_conn| async move {
@@ -85,9 +90,8 @@ where
             eprintln!("Failed to signal server start: {}", e);
         }
         let graceful = s.with_graceful_shutdown(async {
-            rx_done
-                .recv_timeout(Duration::from_secs(2))
-                .expect("Failed to run test fasth enough");
+            let signal = rx_done.await.expect("Failed to run test fasth enough");
+            println!("Ready to shut down: {}", signal);
         });
         if let Err(e) = graceful.await {
             eprintln!("server error: {}", e);
