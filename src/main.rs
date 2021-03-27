@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use structopt::StructOpt;
- use url::Url;
+use url::Url;
 
 use mio::net::TcpStream;
 use rab::benchmarking::benchmark;
