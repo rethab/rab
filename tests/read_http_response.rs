@@ -25,6 +25,7 @@ use rab::reporting::Reporter;
 
 #[tokio::test(flavor = "multi_thread")]
 #[serial]
+#[ignore]
 async fn should_count_body_length() {
     let url = Url::parse("http://localhost:3000").expect("Invalid url");
     let (server, tx_done) = create_server(&url, || Response::new(Body::from("hello, world")));
