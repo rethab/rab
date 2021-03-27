@@ -110,7 +110,7 @@ impl Reporter {
         println!("Server Port:\t\t{}", url.port_or_known_default().unwrap());
         println!();
 
-        println!("Document Path:\t{}", url.path());
+        println!("Document Path:\t\t{}", url.path());
         if let Some(doclen) = ctx.doclen {
             println!("Document Length:\t{} bytes", doclen);
         }
