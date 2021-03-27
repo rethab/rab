@@ -3,6 +3,7 @@ use url::{Position, Url};
 pub struct Response {
     pub status: u16,
     pub server: Option<String>, // Server header
+    pub body_length: Option<usize>,
 }
 
 impl Response {
@@ -11,12 +12,16 @@ impl Response {
 
         if let [a, b, c] = resp[9..12] {
             let status = ascii_num(a) * 100 + ascii_num(b) * 10 + ascii_num(c);
-            let server = if status_only {
-                None
+            let (server, body_length) = if status_only {
+                (None, None)
             } else {
-                parse_server(resp)
+                (parse_server(resp), body_length(resp))
             };
-            Ok(Response { status, server })
+            Ok(Response {
+                status,
+                server,
+                body_length,
+            })
         } else {
             Err(format!(
                 "Cannot parse as HTTP header: {}",
@@ -27,7 +32,7 @@ impl Response {
 }
 
 fn parse_server(resp: &[u8]) -> Option<String> {
-    dbg!(String::from_utf8_lossy(resp))
+    String::from_utf8_lossy(resp)
         .split("\r\n")
         .find_map(|line| {
             // TODO this copies the string
@@ -37,6 +42,13 @@ fn parse_server(resp: &[u8]) -> Option<String> {
                 None
             }
         })
+}
+
+fn body_length(resp: &[u8]) -> Option<usize> {
+    String::from_utf8_lossy(resp)
+        .split("\r\n\r\n")
+        .last()
+        .map(|b| b.len())
 }
 
 pub fn create_request(url: &Url, use_head: bool) -> String {

@@ -5,9 +5,8 @@ use std::rc::Rc;
 
 use mio::Token;
 
-use ConnectionState::{CONNECTING, UNCONNECTED};
+use ConnectionState::*;
 
-use super::connection::ConnectionState::READ;
 use super::ctx::Ctx;
 use super::reporting::Reporter;
 use mio::event::Source;
@@ -42,7 +41,7 @@ where
             addr,
             stream: factory(addr)?,
             factory,
-            state: UNCONNECTED,
+            state: Unconnected,
             token,
             bytes_sent: 0,
             bytes_received: 0,
@@ -51,7 +50,7 @@ where
             reporter,
         };
         ctx.register(token, &mut connection.stream)?;
-        connection.set_state(CONNECTING);
+        connection.set_state(Connecting);
         Ok(connection)
     }
 
@@ -59,8 +58,8 @@ where
         ctx.deregister(&mut self.stream)?;
         let _ = mem::replace(&mut self.stream, (self.factory)(self.addr)?);
         // prev stream should be dropped here
-        self.set_state(UNCONNECTED);
-        self.set_state(CONNECTING);
+        self.set_state(Unconnected);
+        self.set_state(Connecting);
         ctx.register(self.token, &mut self.stream)
     }
 }
@@ -118,15 +117,15 @@ where
         ctx.sent_requests += 1;
         self.sent_requests += 1;
         self.bytes_sent += ctx.payload.len();
-        self.set_state(READ);
+        self.set_state(Read);
         Ok(())
     }
 }
 
 #[derive(PartialEq, Debug)]
 pub enum ConnectionState {
-    UNCONNECTED,
-    CONNECTING,
-    CONNECTED,
-    READ,
+    Unconnected,
+    Connecting,
+    Connected,
+    Read,
 }
