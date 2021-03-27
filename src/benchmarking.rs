@@ -8,7 +8,7 @@ use mio::event::{Event, Source};
 use mio::{Events, Token};
 
 use super::connection::Connection;
-use super::connection::ConnectionState::{CONNECTED, CONNECTING};
+use super::connection::ConnectionState::{Connected, Connecting};
 use super::ctx::Ctx;
 use super::http::Response;
 use super::reporting::Reporter;
@@ -56,11 +56,11 @@ pub fn handle_connection_event<S: Write + Read + Source>(
     ctx: &mut Ctx,
     conn: &mut Connection<S>,
 ) -> io::Result<()> {
-    if event.is_writable() && conn.state == CONNECTING {
-        conn.set_state(CONNECTED);
+    if event.is_writable() && conn.state == Connecting {
+        conn.set_state(Connected);
     }
 
-    if event.is_writable() && ctx.send_more() && conn.state == CONNECTED {
+    if event.is_writable() && ctx.send_more() && conn.state == Connected {
         conn.send_request(ctx)?;
     }
 
@@ -91,7 +91,7 @@ fn record_response<S>(received_data: &[u8], conn: &Connection<S>, ctx: &mut Ctx)
         if let Ok(resp) = Response::parse(received_data, !first_response) {
             if first_response {
                 ctx.server_name = Some(resp.server.unwrap_or_default());
-                ctx.doclen = Some(received_data.len());
+                ctx.doclen = resp.body_length;
             }
             if (200..300).contains(&resp.status) {
                 ctx.successful_response();

@@ -25,13 +25,12 @@ use rab::reporting::Reporter;
 
 #[tokio::test(flavor = "multi_thread")]
 #[serial]
-#[ignore]
 async fn should_count_body_length() {
     let url = Url::parse("http://localhost:3000").expect("Invalid url");
     let (server, tx_done) = create_server(&url, || Response::new(Body::from("hello, world")));
-    let conn = (*bench_connection(&url)).1;
+    let ctx = (*bench_connection(&url)).0;
     tx_done.send(1).expect("Failed to signal done");
-    assert_eq!(12, conn.bytes_received);
+    assert_eq!(Some(12), ctx.doclen);
     let _ = server.await;
 }
 

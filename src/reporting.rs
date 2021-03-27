@@ -51,23 +51,23 @@ impl Reporter {
     pub fn connection_state_changed(&mut self, conn: &Token, new_state: &ConnectionState) {
         let stats = self.get_or_insert(conn);
 
-        use ConnectionState::*;
+        use ConnectionState as Conn;
         use State::*;
         match (&stats.state, new_state) {
-            (Connected, READ) => {
+            (Connected, Conn::Read) => {
                 stats.state = Read(Instant::now());
             }
-            (Read(started), UNCONNECTED) => {
+            (Read(started), Conn::Unconnected) => {
                 stats.times.push(Instant::now() - *started);
                 stats.state = Unconnected;
                 self.done += 1;
                 self.print_heartbeat();
             }
-            (Connecting(started), CONNECTED) => {
+            (Connecting(started), Conn::Connected) => {
                 stats.ctimes.push(Instant::now() - *started);
                 stats.state = Connected;
             }
-            (_, CONNECTING) => {
+            (_, Conn::Connecting) => {
                 stats.state = Connecting(Instant::now());
             }
             invalid => panic!(
