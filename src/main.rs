@@ -1,3 +1,4 @@
+extern crate rab;
 extern crate structopt;
 
 use std::cell::RefCell;
@@ -12,17 +13,12 @@ use std::time::Duration;
 use structopt::StructOpt;
 use url::Url;
 
-use connection::Connection;
-
-use crate::benchmarking::benchmark;
-use crate::ctx::Ctx;
-use crate::reporting::Reporter;
-
-mod benchmarking;
-mod connection;
-mod ctx;
-mod http;
-mod reporting;
+use mio::net::TcpStream;
+use rab::benchmarking::benchmark;
+use rab::connection::Connection;
+use rab::ctx::Ctx;
+use rab::http;
+use rab::reporting::Reporter;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "rab", about = "A drop-in replacement ApacheBench")]
@@ -97,7 +93,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
     let req = http::create_request(&opt.url.0, opt.use_head);
-    let request = req.as_bytes();
 
     let heartbeatres = if opt.quiet || opt.requests <= 150 {
         None
@@ -105,12 +100,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(100.max(opt.requests / 10))
     };
     let reporter = Rc::new(RefCell::new(Reporter::new(heartbeatres)));
-    let mut ctx = Ctx::new(request, opt.requests, opt.concurrency)?;
+    let mut ctx = Ctx::new(req.into_bytes(), opt.requests, opt.concurrency)?;
 
     let mut connections = HashMap::new();
 
     for _ in 0..opt.concurrency {
-        let connection = Connection::new(addr, &mut ctx, reporter.clone())?;
+        let factory = Box::new(TcpStream::connect);
+        let connection = Connection::<TcpStream>::new(&mut ctx, addr, factory, reporter.clone())?;
         connections.insert(connection.token, connection);
     }
 

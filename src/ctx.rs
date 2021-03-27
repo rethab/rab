@@ -1,15 +1,15 @@
 use std::io;
 use std::time::Duration;
 
-use mio::net::TcpStream;
+use mio::event::Source;
 use mio::{Events, Interest, Poll, Token};
 
-pub struct Ctx<'a> {
+pub struct Ctx {
     pub successful_responses: usize,
     pub unsuccessful_responses: usize,
     pub failed_responses: usize,
     pub sent_requests: usize,
-    pub payload: &'a [u8],
+    pub payload: Vec<u8>,
     pub concurrency: usize,
     pub server_name: Option<String>,
     pub doclen: Option<usize>,
@@ -18,8 +18,8 @@ pub struct Ctx<'a> {
     token: Token,
 }
 
-impl<'a> Ctx<'a> {
-    pub fn new(payload: &'a [u8], max_requests: usize, concurrency: usize) -> io::Result<Ctx<'a>> {
+impl Ctx {
+    pub fn new(payload: Vec<u8>, max_requests: usize, concurrency: usize) -> io::Result<Ctx> {
         Ok(Ctx {
             poll: Poll::new()?,
             token: Token(0),
@@ -59,14 +59,14 @@ impl<'a> Ctx<'a> {
         self.poll.poll(events, timeout)
     }
 
-    pub fn register(&mut self, token: Token, stream: &mut TcpStream) -> io::Result<()> {
+    pub fn register<S: Source>(&mut self, token: Token, source: &mut S) -> io::Result<()> {
         self.poll
             .registry()
-            .register(stream, token, Interest::READABLE | Interest::WRITABLE)
+            .register(source, token, Interest::READABLE | Interest::WRITABLE)
     }
 
-    pub fn deregister(&self, stream: &mut TcpStream) -> io::Result<()> {
-        self.poll.registry().deregister(stream)
+    pub fn deregister<S: Source>(&self, source: &mut S) -> io::Result<()> {
+        self.poll.registry().deregister(source)
     }
 
     pub fn next_token(&mut self) -> Token {

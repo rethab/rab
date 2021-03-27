@@ -4,19 +4,20 @@ use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use mio::event::Event;
+use mio::event::{Event, Source};
 use mio::{Events, Token};
 
-use crate::connection::Connection;
-use crate::connection::ConnectionState::{CONNECTED, CONNECTING};
-use crate::ctx::Ctx;
-use crate::http::Response;
-use crate::reporting::Reporter;
+use super::connection::Connection;
+use super::connection::ConnectionState::{CONNECTED, CONNECTING};
+use super::ctx::Ctx;
+use super::http::Response;
+use super::reporting::Reporter;
+use std::io::{Read, Write};
 
-pub fn benchmark(
+pub fn benchmark<S: Write + Read + Source>(
     timelimit: Duration,
     ctx: &mut Ctx,
-    connections: &mut HashMap<Token, Connection>,
+    connections: &mut HashMap<Token, Connection<S>>,
     reporter: Rc<RefCell<Reporter>>,
 ) -> io::Result<()> {
     let start = Instant::now();
@@ -50,7 +51,11 @@ pub fn benchmark(
     Ok(())
 }
 
-fn handle_connection_event(event: &Event, ctx: &mut Ctx, conn: &mut Connection) -> io::Result<()> {
+pub fn handle_connection_event<S: Write + Read + Source>(
+    event: &Event,
+    ctx: &mut Ctx,
+    conn: &mut Connection<S>,
+) -> io::Result<()> {
     if event.is_writable() && conn.state == CONNECTING {
         conn.set_state(CONNECTED);
     }
@@ -76,7 +81,7 @@ fn handle_connection_event(event: &Event, ctx: &mut Ctx, conn: &mut Connection) 
     Ok(())
 }
 
-fn record_response(received_data: &[u8], conn: &Connection, ctx: &mut Ctx) {
+fn record_response<S>(received_data: &[u8], conn: &Connection<S>, ctx: &mut Ctx) {
     if !conn.is_reading_response() {
         // first bytes, check http response code
 

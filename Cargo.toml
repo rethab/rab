@@ -5,7 +5,11 @@ authors = ["Reto Hablützel <rethab@protonmail.ch>"]
 edition = "2018"
 
 [dependencies]
-mio = {version = "0.7", features = ["net", "os-poll"] }
+mio = { version = "0.7", features = ["net", "os-poll"] }
 structopt = "0.3"
 url = "2"
 
+[dev-dependencies]
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+serial_test = "0.5"

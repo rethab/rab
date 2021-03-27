@@ -27,10 +27,11 @@ impl Response {
 }
 
 fn parse_server(resp: &[u8]) -> Option<String> {
-    String::from_utf8_lossy(resp)
+    dbg!(String::from_utf8_lossy(resp))
         .split("\r\n")
         .find_map(|line| {
-            if line.starts_with("Server:") {
+            // TODO this copies the string
+            if line.to_ascii_lowercase().starts_with("server:") {
                 Some(line[8..].to_owned())
             } else {
                 None
