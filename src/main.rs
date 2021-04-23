@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         opt.requests = 50000;
     }
 
-    let timelimit = Duration::from_secs(opt.timelimit.unwrap_or(u64::max_value()));
+    let timelimit = Duration::from_secs(opt.timelimit.unwrap_or(u64::MAX));
 
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
