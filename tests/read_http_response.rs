@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::time::Duration;
 
 use hyper::body::Bytes;
@@ -21,9 +22,8 @@ use url::Url;
 use rab::benchmarking::benchmark;
 use rab::connection::Connection;
 use rab::ctx::Ctx;
-use rab::http::create_request;
+use rab::http::{create_request, HttpVersion};
 use rab::reporting::Reporter;
-use std::sync::Arc;
 
 #[tokio::test(flavor = "multi_thread")]
 #[serial]
@@ -74,7 +74,10 @@ async fn should_calculate_content_length_with_chunked_encoding() {
                     let rt = rt.clone();
                     async move {
                         let (mut sender, body) = Body::channel();
-                        let resp = Response::builder().body(body).unwrap();
+                        let resp = Response::builder()
+                            .header("Transfer-Encoding", "chunked")
+                            .body(body)
+                            .unwrap();
                         let rt = rt.clone();
                         rt.spawn(async move {
                             sender
@@ -116,7 +119,7 @@ async fn should_calculate_content_length_with_chunked_encoding() {
 
 fn bench_connection(url: &Url) -> Box<(Ctx, Connection<TcpStream>)> {
     let reporter = Rc::new(RefCell::new(Reporter::new(None)));
-    let request = create_request(&url, false);
+    let request = create_request(&url, false, HttpVersion::V1_1);
     let mut ctx = Ctx::new(request.into_bytes(), 1, 1).unwrap();
     let conn = Connection::new(
         &mut ctx,

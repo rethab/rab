@@ -18,6 +18,7 @@ use rab::benchmarking::benchmark;
 use rab::connection::Connection;
 use rab::ctx::Ctx;
 use rab::http;
+use rab::http::HttpVersion;
 use rab::reporting::Reporter;
 
 #[derive(StructOpt, Debug)]
@@ -51,6 +52,9 @@ struct Opts {
 
     #[structopt(help = "[http[s]://]hostname[:port]/path")]
     url: LenientUrl,
+
+    #[structopt(long = "http1.0", help = "Use HTTP 1.0 instead of 1.1")]
+    http1_0: bool,
 
     #[structopt(
         short = "q",
@@ -92,7 +96,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let addr: SocketAddr = create_socket_addr(&opt.url.0)?;
 
-    let req = http::create_request(&opt.url.0, opt.use_head);
+    let http_version = decide_version(&opt);
+    let req = http::create_request(&opt.url.0, opt.use_head, http_version);
 
     let heartbeatres = if opt.quiet || opt.requests <= 150 {
         None
@@ -126,6 +131,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     reporter.borrow().print(&opt.url.0, &ctx);
 
     Ok(())
+}
+
+fn decide_version(opts: &Opts) -> HttpVersion {
+    if opts.http1_0 {
+        HttpVersion::V1_0
+    } else {
+        HttpVersion::V1_1
+    }
 }
 
 fn create_socket_addr(url: &Url) -> io::Result<SocketAddr> {

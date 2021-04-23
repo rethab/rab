@@ -1,5 +1,10 @@
 use url::{Position, Url};
 
+pub enum HttpVersion {
+    V1_0,
+    V1_1,
+}
+
 pub struct Response {
     pub status: u16,
     pub server: Option<String>, // Server header
@@ -39,13 +44,17 @@ fn parse_server(resp: &[u8]) -> Option<String> {
         })
 }
 
-pub fn create_request(url: &Url, use_head: bool) -> String {
+pub fn create_request(url: &Url, use_head: bool, version: HttpVersion) -> String {
     let host = url.host_str().expect("Missing host");
     let path = &url[Position::BeforePath..];
     let method = if use_head { "HEAD" } else { "GET" };
+    let version_str = match version {
+        HttpVersion::V1_0 => "1.0",
+        HttpVersion::V1_1 => "1.1",
+    };
     format!(
-        "{} {} HTTP/1.0\r\nHost: {}\r\n{}\r\n\r\n",
-        method, path, host, "Accept: */*"
+        "{} {} HTTP/{}\r\nHost: {}\r\n{}\r\n\r\n",
+        method, path, version_str, host, "Accept: */*"
     )
 }
 
